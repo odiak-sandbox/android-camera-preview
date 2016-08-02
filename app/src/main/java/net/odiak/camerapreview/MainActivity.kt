@@ -139,8 +139,16 @@ class MainActivity : AppCompatActivity() {
             isPreviewing = true
         }
 
-        val previewWidth = previewHeightRotated
-        val previewHeight = previewWidthRotated
+        val previewWidth: Int
+        val previewHeight: Int
+        if (cameraRotation == 90 || cameraRotation == 270) {
+            previewWidth = previewHeightRotated
+            previewHeight = previewWidthRotated
+        } else {
+            previewWidth = previewWidthRotated
+            previewHeight = previewHeightRotated
+        }
+
         val parentWidth = parent.width
         val parentHeight = parent.height
         if (parentWidth == 0 || parentHeight == 0) return
