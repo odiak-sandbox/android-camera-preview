@@ -7,17 +7,21 @@
     android:orientation="vertical"
     >
 
-    <TextView
-        android:id="@+id/textView"
+    <FrameLayout
+        android:id="@+id/container"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        />
+        android:layout_height="150dp"
+        android:clipChildren="true"
+        >
 
-    <SurfaceView
-        android:id="@+id/preview"
-        android:layout_width="match_parent"
-        android:layout_height="100dp"
-        android:visibility="invisible"
-        />
+        <TextureView
+            android:id="@+id/preview"
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:layout_gravity="center"
+            android:visibility="invisible"
+            />
+
+    </FrameLayout>
 
 </LinearLayout>

@@ -3,15 +3,16 @@ package net.odiak.camerapreview
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager.PERMISSION_GRANTED
+import android.graphics.SurfaceTexture
 import android.hardware.Camera
 import android.os.Build
 import android.os.Bundle
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import android.view.Surface
+import android.view.TextureView
 import android.view.View
-import android.widget.TextView
+import android.view.ViewGroup
 
 class MainActivity : AppCompatActivity() {
 
@@ -21,19 +22,14 @@ class MainActivity : AppCompatActivity() {
     private var camera: Camera? = null
     private var isPreviewing = false
 
-    private val pictureWidth = 4032
-    private val pictureHeight = 3024
-
-    private val previewWidth = 1920
-    private val previewHeight = 1080
+    private var previewWidth = 0
+    private var previewHeight = 0
+    private var cameraRotation = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
-
-        val textView = findViewById(R.id.textView) as TextView
-        textView.text = "${pictureWidth}x${pictureHeight}, ${previewWidth}x${previewHeight}"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
                 checkSelfPermissionCompat(PERMISSION) != PERMISSION_GRANTED) {
@@ -80,74 +76,109 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onCameraReady() {
-        val surfaceView = findViewById(R.id.preview) as SurfaceView
-        surfaceView.visibility = View.VISIBLE
+        val textureView = findViewById(R.id.preview) as TextureView
 
-        surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder?) {
-                camera = Camera.open()
+        val container = findViewById(R.id.container) as ViewGroup
 
-                val rotation = windowManager.defaultDisplay.rotation
-                val cameraInfo = Camera.CameraInfo()
-                Camera.getCameraInfo(0, cameraInfo)
+        textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureAvailable(texture: SurfaceTexture?, p1: Int, p2: Int) {
+                println("@@ available")
+                val cameraId = 0
+                camera = Camera.open(cameraId)
 
                 camera?.let {
-//                    it.setDisplayOrientation((cameraInfo.orientation - rotation * 90 + 360) % 360)
-                    it.setDisplayOrientation(90)
-                    it.setPreviewDisplay(holder)
+                    cameraRotation = calculateCameraRotation(cameraId, it)
+                    it.setDisplayOrientation(cameraRotation)
+                    it.setPreviewTexture(texture)
                     println(it.parameters.supportedPictureSizes.map { it.toStr() })
                     println(it.parameters.supportedPreviewSizes.map { it.toStr() })
+
+                    val previewSize = it.parameters.supportedPreviewSizes[0]!!
+                    previewWidth = previewSize.width
+                    previewHeight = previewSize.height
+
+                    startPreview(previewWidth, previewHeight, textureView, container)
                 }
             }
 
-            override fun surfaceChanged(holder: SurfaceHolder?, format: Int, width: Int,
-                                        height: Int) {
-                println("@@ surfaceChanged: $width,$height")
+            override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture?,
+                                                     width: Int, height: Int) {
 
-                if (isPreviewing) {
-                    camera?.stopPreview()
-                    camera?.setPreviewDisplay(holder)
-                }
+                println("@@ sizeChanged: $width,$height")
 
-                camera?.let {
-                    val p = it.parameters
-                    val previewSize = findBestPreviewSize(p.supportedPreviewSizes, width, height)
-//                    println(previewSize.toStr())
-//                    println(p.pictureSize.toStr())
-//                    p.setPreviewSize(previewSize.width, previewSize.height)
-                    p.setPictureSize(pictureWidth, pictureHeight)
-                    p.setPreviewSize(previewWidth, previewHeight)
-                    it.parameters = p
-
-                    it.startPreview()
-                    isPreviewing = true
-
-                    val w = previewWidth
-                    val h = previewHeight
-                    val newHeight = h * width / w
-                    if (newHeight != height) {
-                        val lp = surfaceView.layoutParams
-                        lp?.height = newHeight
-                        surfaceView.requestLayout()
-                    }
-                }
+                startPreview(previewWidth, previewHeight, textureView, container)
             }
 
-            override fun surfaceDestroyed(p0: SurfaceHolder?) {
+            override fun onSurfaceTextureUpdated(texture: SurfaceTexture?) {
+            }
+
+            override fun onSurfaceTextureDestroyed(texture: SurfaceTexture?): Boolean {
                 camera?.release()
                 camera = null
                 isPreviewing = false
+
+                return true
             }
-        })
+        }
+        textureView.visibility = View.VISIBLE
     }
 
-    private fun findBestPreviewSize(previewSizes: List<Camera.Size>, width: Int, height: Int): Camera.Size {
-        val ratio = width / height.toFloat()
-        val bestSize = previewSizes.withIndex().minBy { p ->
-            val (i, size) = p
-            Math.abs(size.width / size.height.toFloat() - ratio)
-        }?.value
-        return bestSize ?: error("no size")
+    private fun startPreview(previewWidthRotated: Int, previewHeightRotated: Int, textureView: TextureView,
+                             parent: ViewGroup) {
+        if (isPreviewing) {
+            camera?.stopPreview()
+            isPreviewing = false
+        }
+
+        camera?.let {
+            val p = it.parameters
+            p.setPreviewSize(previewWidthRotated, previewHeightRotated)
+            it.parameters = p
+
+            it.startPreview()
+            isPreviewing = true
+        }
+
+        val previewWidth = previewHeightRotated
+        val previewHeight = previewWidthRotated
+        val parentWidth = parent.width
+        val parentHeight = parent.height
+        if (parentWidth == 0 || parentHeight == 0) return
+
+        val previewRatio = previewWidth.toFloat() / previewHeight
+        val parentRatio = parentWidth.toFloat() / parentHeight
+
+        val lp = textureView.layoutParams ?: return
+
+        if (previewRatio < parentRatio) {
+            lp.width = parentWidth
+            lp.height = parentWidth * previewHeight / previewWidth
+        } else {
+            lp.height = parentHeight
+            lp.width = parentHeight * previewWidth / previewHeight
+        }
+        textureView.requestLayout()
+    }
+
+    private fun calculateCameraRotation(cameraId: Int, camera: Camera): Int {
+        val cameraInfo = Camera.CameraInfo()
+        Camera.getCameraInfo(cameraId, cameraInfo)
+
+        val screenRotation = this.windowManager?.defaultDisplay?.rotation ?: 0
+        val screenRotationDegrees = when (screenRotation) {
+            Surface.ROTATION_0 -> 0
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+
+        return if (cameraInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+            val rotation = (cameraInfo.orientation + screenRotationDegrees) % 360
+            (360 - rotation) % 360
+        } else {
+            (cameraInfo.orientation - screenRotationDegrees + 360) % 360
+        }
     }
 
     private fun Camera.Size.toStr() = "${width}x${height}"
