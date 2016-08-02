@@ -149,6 +149,8 @@ class MainActivity : AppCompatActivity() {
         val parentRatio = parentWidth.toFloat() / parentHeight
 
         val lp = textureView.layoutParams ?: return
+        val prevWidth = lp.width
+        val prevHeight = lp.height
 
         if (previewRatio < parentRatio) {
             lp.width = parentWidth
@@ -157,6 +159,8 @@ class MainActivity : AppCompatActivity() {
             lp.height = parentHeight
             lp.width = parentHeight * previewWidth / previewHeight
         }
+        if (lp.width == prevWidth && lp.height == prevHeight) return
+
         textureView.requestLayout()
     }
 
